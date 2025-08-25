@@ -18,12 +18,6 @@ hooks:
 
   ValidateService:
     - location: scripts/deploy_notify.sh
-      arguments: ["auto", "CodeDeploy"]  # Final status: success/rollback/fail
-      timeout: 60
-      runas: root
-
-  ApplicationStop:
-    - location: scripts/deploy_notify.sh
-      arguments: ["early", "CodeDeploy"]  # Early failure before ValidateService
+      arguments: ["auto", "CodeDeploy"]   # Automatically detects success/failure/rollback
       timeout: 60
       runas: root
