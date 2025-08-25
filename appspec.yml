@@ -7,17 +7,25 @@ files:
 
 hooks:
   BeforeInstall:
-    - location: scripts/before_install.sh
+    - location: scripts/hook_wrapper.sh
+      arguments: ["scripts/before_install.sh", "BeforeInstall"]
+      timeout: 300
+      runas: root
+
+  AfterInstall:
+    - location: scripts/hook_wrapper.sh
+      arguments: ["scripts/after_install.sh", "AfterInstall"]
       timeout: 300
       runas: root
 
   ApplicationStart:
-    - location: scripts/start_nginx.sh
+    - location: scripts/hook_wrapper.sh
+      arguments: ["scripts/start_nginx.sh", "ApplicationStart"]
       timeout: 300
       runas: root
 
   ValidateService:
-    - location: scripts/deploy_notify.sh
-      arguments: ["auto", "CodeDeploy"]   # Automatically detects success/failure/rollback
-      timeout: 60
+    - location: scripts/hook_wrapper.sh
+      arguments: ["success_marker", "ValidateService"]
+      timeout: 300
       runas: root
