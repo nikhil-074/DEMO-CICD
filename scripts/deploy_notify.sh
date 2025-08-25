@@ -1,12 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-ARG_STATUS=${1:-auto}      # "0", "1", or "auto"
 STAGE=${2:-"CodeDeploy"}
 
 # Emails
 ALERT_EMAIL="nikhil.devops.moweb@gmail.com"
-CC_EMAILS="dhaval.devops.moweb@gmail krish.devops.moweb@gmail"
+CC_EMAILS="dhaval.devops.moweb@gmail.com krish.devops.moweb@gmail.com"
 
 # Timezone
 export TZ="Asia/Kolkata"
@@ -16,30 +15,25 @@ export PATH=$PATH:/usr/local/bin:/usr/bin
 SECRET_NAME="my-smtp-credentialss"
 REGION="ap-south-1"
 
-# Determine final deployment status
-if [ "$ARG_STATUS" == "auto" ]; then
-    case "${DEPLOYMENT_STATUS:-Succeeded}" in
-        Succeeded)
-            STATUS=0
-            STATUS_TEXT="Success"
-            ;;
-        Failed)
-            STATUS=1
-            STATUS_TEXT="Failed"
-            ;;
-        Stopped)
-            STATUS=1
-            STATUS_TEXT="Rolled back"
-            ;;
-        *)
-            STATUS=1
-            STATUS_TEXT="Unknown"
-            ;;
-    esac
+# 🔎 Get Deployment Status from AWS API instead of relying on env var
+DEPLOYMENT_ID=${DEPLOYMENT_ID:-""}
+
+if [ -n "$DEPLOYMENT_ID" ]; then
+    STATUS_TEXT=$(aws deploy get-deployment \
+      --deployment-id "$DEPLOYMENT_ID" \
+      --region "$REGION" \
+      --query "deploymentInfo.status" \
+      --output text 2>/dev/null || echo "Unknown")
 else
-    STATUS=$ARG_STATUS
-    STATUS_TEXT=$([ "$STATUS" -eq 0 ] && echo "Success" || echo "Failed")
+    STATUS_TEXT="Unknown"
 fi
+
+# Map to exit code style
+case "$STATUS_TEXT" in
+    Succeeded) STATUS=0 ;;
+    Failed|Stopped) STATUS=1 ;;
+    *) STATUS=1 ;;
+esac
 
 # Fetch Gmail credentials
 SECRETS_JSON=$(aws secretsmanager get-secret-value \
