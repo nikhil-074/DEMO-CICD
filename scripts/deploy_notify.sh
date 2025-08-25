@@ -1,46 +1,25 @@
 #!/bin/bash
 set -euo pipefail
 
-# Arguments
-ARG_STATUS=${1:-auto}          # "0", "1", or "auto"
+ARG_STATUS=${1:-auto}   # 0=success,1=failure,auto=detect
 STAGE=${2:-"CodeDeploy"}
 
-# Emails
 ALERT_EMAIL="nikhil.devops.moweb@gmail.com"
-CC_EMAILS="dhaval.devops.moweb@gmail krish.devops.moweb@gmail"
+CC_EMAILS="dhaval.devops.moweb@gmail krish.devops.moweb@gmail.com"
 
-# Timezone
 export TZ="Asia/Kolkata"
-
-# Ensure AWS CLI is in PATH
 export PATH=$PATH:/usr/local/bin:/usr/bin
 
-# AWS Secrets Manager
+# AWS Secrets
 SECRET_NAME="my-smtp-credentialss"
 REGION="ap-south-1"
-
-# Determine deployment status automatically
-if [ "$ARG_STATUS" == "auto" ]; then
-    if [ "${DEPLOYMENT_STATUS:-Succeeded}" == "Succeeded" ]; then
-        STATUS=0
-    else
-        STATUS=1
-    fi
-else
-    STATUS=$ARG_STATUS
-fi
-
-# Fetch Gmail credentials
 SECRETS_JSON=$(aws secretsmanager get-secret-value \
   --secret-id "$SECRET_NAME" \
   --region "$REGION" \
-  --query SecretString \
-  --output text)
-
+  --query SecretString --output text)
 SMTP_USER=$(echo "$SECRETS_JSON" | jq -r .SMTP_USER)
 SMTP_PASS=$(echo "$SECRETS_JSON" | jq -r .SMTP_PASS)
 
-# Temporary msmtp config
 cat > /tmp/msmtprc <<EOF
 defaults
 auth on
@@ -56,25 +35,32 @@ account default : gmail
 EOF
 chmod 600 /tmp/msmtprc
 
-# Compose email
-if [ "$STATUS" -eq 0 ]; then
-    STATUS_TEXT="Success"
+# Detect status
+if [ "$ARG_STATUS" == "auto" ]; then
+    if [ "${DEPLOYMENT_STATUS:-Succeeded}" == "Succeeded" ]; then
+        STATUS=0
+        # Detect rollback by comparing revision (optional)
+        if [ "${ROLLED_BACK:-0}" == "1" ]; then
+            STATUS=1
+            STAGE="CodeDeploy (Rolled back)"
+        fi
+    else
+        STATUS=1
+    fi
 else
-    STATUS_TEXT="Failed"
+    STATUS=$ARG_STATUS
 fi
 
 BODY="Stage: $STAGE
-Status: $STATUS_TEXT
+Status: $( [ $STATUS -eq 0 ] && echo Success || echo Failed )
 Time: $(date '+%Y-%m-%d %H:%M:%S %Z')
 Deployment ID: ${DEPLOYMENT_ID:-N/A}
 Application: ${APPLICATION_NAME:-N/A}
 Description: CodeDeploy has completed its execution."
 
-# Send email function
 send_mail() {
     local SUBJECT="$1"
     local BODY="$2"
-
     {
         echo "Subject: $SUBJECT"
         echo "From: $SMTP_USER"
@@ -85,7 +71,6 @@ send_mail() {
     } | msmtp -C /tmp/msmtprc -t || echo "⚠️ Email sending failed"
 }
 
-# Send the email
 if [ "$STATUS" -eq 0 ]; then
     send_mail "✅ $STAGE Success" "$BODY"
 else
